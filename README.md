@@ -2,7 +2,7 @@
 
 > Un bot de música para Discord con soporte para reproducción de canciones desde **YouTube**, **Spotify** y **SoundCloud**. Este bot incluye características como una cola de canciones interactiva, controles de reproducción y otras funcionalidades personalizadas.
 
-![Discord Music Bot Banner](https://dummyimage.com/1200x300/3498db/ffffff&text=Discord+Music+Bot) <!-- Imagen simulada, actualiza más adelante -->
+![Discord Music Bot Banner](BANNER.webp) <!-- Imagen simulada, actualiza más adelante -->
 
 ---
 
