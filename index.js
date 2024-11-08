@@ -99,7 +99,7 @@ client.on('messageCreate', async message => {
     }
 });
 
-distube.on('playSong', async (queue, song) => {
+async function sendControlMessage(queue, song) {
     const buttons = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
@@ -124,11 +124,24 @@ distube.on('playSong', async (queue, song) => {
                 .setStyle(ButtonStyle.Danger)
         );
 
-    if (controlMessage) await controlMessage.delete();
+    if (controlMessage) {
+        try {
+            await controlMessage.delete();
+        } catch (error) {
+            if (error.code !== 10008) { // Si el error es distinto a "Unknown Message"
+                console.error("Error al intentar eliminar el mensaje de control:", error);
+            }
+        }
+    }
+
     controlMessage = await queue.textChannel.send({
         content: `🎶 Reproduciendo ahora: **${song.name}** - \`${song.formattedDuration}\``,
         components: [buttons]
     });
+}
+
+distube.on('playSong', (queue, song) => {
+    sendControlMessage(queue, song);
 });
 
 distube.on('addSong', (queue, song) => {
