@@ -1,6 +1,17 @@
+// Archivo: index.js
+
 const config = require('./config.json');
 const express = require('express');
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, EmbedBuilder } = require('discord.js');
+const {
+    Client,
+    GatewayIntentBits,
+    Partials,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    Events,
+    EmbedBuilder
+} = require('discord.js');
 const { DisTube } = require('distube');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
 const { SpotifyPlugin } = require('@distube/spotify');
@@ -12,16 +23,22 @@ require('dotenv').config();
 const app = express();
 const port = 3000;
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildVoiceStates],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
+    ],
     partials: [Partials.Channel],
 });
 
 const distube = new DisTube(client, {
     plugins: [new YouTubePlugin(), new SpotifyPlugin(), new SoundCloudPlugin()]
 });
-const queue = new Map();
-let controlMessage;
-const currentQueuePage = new Map();
+
+// Variables para manejar mensajes y estados por servidor
+const controlMessages = new Map(); // guildId -> controlMessage
+const currentQueuePage = new Map(); // guildId -> pageNumber
 
 app.listen(port, () => {
     console.log(`Servidor escuchando en http://localhost:${port}`);
@@ -48,10 +65,10 @@ client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
     const responses = {
-        hola: "Picate la cola mejor",
+        hola: "Pícate la cola mejor",
         valo: "@everyone Saquen el valo",
         fort: "@everyone Saquen el fortnite",
-        chupi: "@everyone HOY SE BEBE, PREPARENSE PARA EL CHUPI",
+        chupi: "@everyone HOY SE BEBE, PREPÁRENSE PARA EL CHUPI",
         cs: "@everyone Saca el counter"
     };
     if (responses[message.content]) {
@@ -66,7 +83,9 @@ client.on('messageCreate', async message => {
         skip: ['-skip', '-s'],
         showQueue: ['-showQueue', '-q'],
         stop: ['-stop', '-st'],
-        help: ['-help', '-h']
+        help: ['-help', '-h'],
+        loop: ['-loop', '-l'],
+        remove: ['-remove', '-rm']
     };
 
     const args = message.content.split(' ');
@@ -86,6 +105,8 @@ client.on('messageCreate', async message => {
                 { name: '⏭️ **Saltar Canción**', value: '`-skip` o `-s` - Salta a la siguiente canción en la cola.' },
                 { name: '📜 **Mostrar Cola**', value: '`-showQueue` o `-q` - Muestra la cola de canciones actual.' },
                 { name: '🛑 **Detener Reproducción**', value: '`-stop` o `-st` - Detiene la reproducción y saca al bot del canal de voz.' },
+                { name: '🔁 **Modo Loop**', value: '`-loop <off|song|queue>` o `-l` - Establece el modo de repetición.' },
+                { name: '🗑️ **Eliminar Canción de la Cola**', value: '`-remove <número>` o `-rm` - Elimina la canción en la posición especificada de la cola.' },
                 { name: '❓ **Ayuda**', value: '`-help` o `-h` - Muestra este mensaje de ayuda.' }
             )
             .setFooter({ text: 'Usa estos comandos para disfrutar de la música en tu servidor.' });
@@ -116,6 +137,47 @@ client.on('messageCreate', async message => {
             console.error('Error al intentar reproducir el audio:', err);
             message.reply("Hubo un error al intentar reproducir la canción.");
         }
+    }
+
+    // Comando de loop
+    if (commands.loop.includes(command)) {
+        const queue = distube.getQueue(message);
+        if (!queue) return message.reply("No hay ninguna canción en reproducción.");
+
+        const modeArg = args[1];
+        let mode = null;
+
+        if (modeArg === 'off') {
+            mode = 0; // Sin bucle
+        } else if (modeArg === 'song') {
+            mode = 1; // Bucle de canción
+        } else if (modeArg === 'queue') {
+            mode = 2; // Bucle de cola
+        } else {
+            return message.reply('Por favor, especifica un modo de bucle válido: `off`, `song` o `queue`.');
+        }
+
+        queue.setRepeatMode(mode);
+        const modeText = mode === 0 ? 'desactivado' : mode === 1 ? 'Bucle de canción' : 'Bucle de cola';
+        message.reply(`🔁 Modo de repetición establecido a **${modeText}**.`);
+    }
+
+    // Comando de remove
+    if (commands.remove.includes(command)) {
+        const queue = distube.getQueue(message);
+        if (!queue) return message.reply("No hay canciones en la cola.");
+
+        const index = parseInt(args[1]) - 1; // Restamos 1 porque las listas empiezan en 0
+        if (isNaN(index)) {
+            return message.reply('Por favor, proporciona el número de la canción en la cola que deseas eliminar.');
+        }
+
+        if (index < 0 || index >= queue.songs.length) {
+            return message.reply(`Por favor, proporciona un número entre 1 y ${queue.songs.length}.`);
+        }
+
+        const removedSong = queue.songs.splice(index, 1)[0];
+        message.reply(`🗑️ Se ha eliminado **${removedSong.name}** de la cola.`);
     }
 
     // Comando de shuffle
@@ -181,12 +243,11 @@ client.on('messageCreate', async message => {
 
         message.reply("⏹️ La reproducción ha sido detenida y el bot ha salido del canal de voz.");
     }
-
 });
 
 // Función para enviar el mensaje de control con botones
 async function sendControlMessage(queue, song) {
-    const buttons = new ActionRowBuilder()
+    const buttons1 = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
                 .setCustomId('pause')
@@ -201,30 +262,54 @@ async function sendControlMessage(queue, song) {
                 .setLabel('⏭️ Saltar')
                 .setStyle(ButtonStyle.Secondary),
             new ButtonBuilder()
+                .setCustomId('loop')
+                .setLabel('🔁 Loop')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
                 .setCustomId('showQueue')
                 .setLabel('🎵 Mostrar Cola')
-                .setStyle(ButtonStyle.Primary),
+                .setStyle(ButtonStyle.Primary)
+        );
+
+    const buttons2 = new ActionRowBuilder()
+        .addComponents(
             new ButtonBuilder()
                 .setCustomId('stop')
                 .setLabel('⏹️ Detener')
                 .setStyle(ButtonStyle.Danger)
         );
 
-    if (controlMessage) {
+    const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle('🎶 Ahora Reproduciendo')
+        .setDescription(`**[${song.name}](${song.url})**`)
+        .setThumbnail(song.thumbnail)
+        .addFields(
+            { name: 'Duración', value: song.formattedDuration, inline: true },
+            { name: 'Solicitado por', value: song.user.toString(), inline: true },
+            { name: 'Modo de Repetición', value: queue.repeatMode === 0 ? 'Desactivado' : queue.repeatMode === 1 ? 'Bucle de Canción' : 'Bucle de Cola', inline: true }
+        )
+        .setFooter({ text: `Vistas: ${song.views} | Likes: ${song.likes}` });
+
+    const guildId = queue.textChannel.guild.id;
+    const previousMessage = controlMessages.get(guildId);
+
+    if (previousMessage) {
         try {
-            await controlMessage.delete();
+            await previousMessage.delete();
         } catch (error) {
-            if (error.code !== 10008) { // Si el error es distinto a "Unknown Message"
-                console.error("Error al intentar eliminar el mensaje de control:", error);
-            }
+            // Manejo de error
         }
     }
 
-    controlMessage = await queue.textChannel.send({
-        content: `🎶 Reproduciendo ahora: **${song.name}** - \`${song.formattedDuration}\``,
-        components: [buttons]
+    const newMessage = await queue.textChannel.send({
+        embeds: [embed],
+        components: [buttons1, buttons2]
     });
+
+    controlMessages.set(guildId, newMessage);
 }
+
 
 distube.on('playSong', (queue, song) => {
     sendControlMessage(queue, song);
@@ -314,6 +399,19 @@ client.on(Events.InteractionCreate, async interaction => {
                 }
                 break;
 
+            case 'loop':
+                if (!queue) {
+                    return interaction.reply({ content: 'No hay ninguna canción en reproducción.', ephemeral: true });
+                }
+                // Alternar entre los modos de loop
+                let mode = (queue.repeatMode + 1) % 3; // Cicla entre 0, 1 y 2
+                queue.setRepeatMode(mode);
+                const modeText = mode === 0 ? 'desactivado' : mode === 1 ? 'Bucle de canción' : 'Bucle de cola';
+                await interaction.reply(`🔁 Modo de repetición establecido a **${modeText}**.`);
+                // Actualizar el mensaje de control para reflejar el nuevo modo
+                sendControlMessage(queue, queue.songs[0]);
+                break;
+
             case 'showQueue':
                 if (!queue || !queue.songs) {
                     return interaction.reply({ content: 'No hay canciones en la cola.', ephemeral: true });
@@ -374,6 +472,8 @@ client.on(Events.InteractionCreate, async interaction => {
                     const voiceConnection = getVoiceConnection(interaction.guildId);
                     if (voiceConnection) voiceConnection.destroy();
                     await interaction.reply('⏹️ La reproducción ha sido detenida y el bot ha salido del canal de voz.');
+                    const guildId = interaction.guildId;
+                    const controlMessage = controlMessages.get(guildId);
                     if (controlMessage) await controlMessage.delete();
                 } else {
                     await interaction.reply({ content: 'No hay ninguna canción en reproducción.', ephemeral: true });
