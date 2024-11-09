@@ -1,5 +1,3 @@
-// Archivo: index.js
-
 const config = require('./config.json');
 const express = require('express');
 const {
@@ -172,12 +170,12 @@ client.on('messageCreate', async message => {
             return message.reply('Por favor, proporciona el número de la canción en la cola que deseas eliminar.');
         }
 
-        if (index < 0 || index >= queue.songs.length) {
-            return message.reply(`Por favor, proporciona un número entre 1 y ${queue.songs.length}.`);
+        if (index <= 0 || index >= queue.songs.length) {
+            return message.reply(`Por favor, proporciona un número entre 2 y ${queue.songs.length}. No puedes eliminar la canción en reproducción.`);
         }
 
         const removedSong = queue.songs.splice(index, 1)[0];
-        message.reply(`🗑️ Se ha eliminado **${removedSong.name}** de la cola.`);
+        message.reply(`🗑️ Se ha eliminado **[${removedSong.name}](${removedSong.url})** de la cola.`);
     }
 
     // Comando de shuffle
@@ -262,10 +260,6 @@ async function sendControlMessage(queue, song) {
                 .setLabel('⏭️ Saltar')
                 .setStyle(ButtonStyle.Secondary),
             new ButtonBuilder()
-                .setCustomId('loop')
-                .setLabel('🔁 Loop')
-                .setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder()
                 .setCustomId('showQueue')
                 .setLabel('🎵 Mostrar Cola')
                 .setStyle(ButtonStyle.Primary)
@@ -273,6 +267,10 @@ async function sendControlMessage(queue, song) {
 
     const buttons2 = new ActionRowBuilder()
         .addComponents(
+            new ButtonBuilder()
+                .setCustomId('loop')
+                .setLabel('🔁 Loop')
+                .setStyle(ButtonStyle.Secondary),
             new ButtonBuilder()
                 .setCustomId('stop')
                 .setLabel('⏹️ Detener')
@@ -298,7 +296,7 @@ async function sendControlMessage(queue, song) {
         try {
             await previousMessage.delete();
         } catch (error) {
-            // Manejo de error
+            // Manejo de error si no se puede eliminar el mensaje anterior
         }
     }
 
@@ -309,7 +307,6 @@ async function sendControlMessage(queue, song) {
 
     controlMessages.set(guildId, newMessage);
 }
-
 
 distube.on('playSong', (queue, song) => {
     sendControlMessage(queue, song);
